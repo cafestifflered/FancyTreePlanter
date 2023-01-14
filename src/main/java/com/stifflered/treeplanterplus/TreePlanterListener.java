@@ -10,6 +10,8 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.TreeType;
+import org.bukkit.block.Block;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
@@ -29,10 +31,16 @@ public class TreePlanterListener implements Listener {
 
         RegionContainer container = WorldGuard.getInstance().getPlatform().getRegionContainer();
         ApplicableRegionSet regions = container.get(BukkitAdapter.adapt(event.getPlayer().getWorld())).getApplicableRegions(blockVector3);
+
+        boolean hasPlanter = false;
         for (ProtectedRegion protectedRegion : regions) {
-            if (!protectedRegion.getId().equals("tree_plant_area")) {
-                return;
+            if (protectedRegion.getId().equals("tree_plant_area")) {
+                hasPlanter = true;
             }
+        }
+
+        if (!hasPlanter) {
+            return;
         }
 
         TreeType type = switch (event.getItemInHand().getType()) {
@@ -50,7 +58,19 @@ public class TreePlanterListener implements Listener {
         if (type != null) {
             TreePlanter planter = new TreePlanter(this.plugin);
             try {
-                planter.build(event.getBlockPlaced().getLocation(), type);
+                Location plantLoc = event.getBlockPlaced().getLocation();
+
+                planter.build(plantLoc, type)
+                        .thenRun(() -> {
+                            Block highest = plantLoc.getWorld().getHighestBlockAt(plantLoc);
+
+                            ArmorStand armorStand = plantLoc.getWorld().spawn(highest.getLocation().toCenterLocation().add(0, 1, 0), ArmorStand.class);
+                            armorStand.setMarker(true);
+                            armorStand.setInvisible(true);
+                            armorStand.setCanTick(false);
+                            armorStand.setCustomNameVisible(true);
+                            armorStand.customName(Component.text(event.getPlayer().getName()));
+                        });
             } catch (CannotPlantException exception) {
                 event.getPlayer().sendMessage(Component.text("Cannot place a tree here!", NamedTextColor.RED));
                 event.setCancelled(true);
